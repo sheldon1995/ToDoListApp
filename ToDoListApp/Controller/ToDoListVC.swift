@@ -7,17 +7,23 @@
 //
 
 import UIKit
+import CoreData
 
 class ToDoListVC: UITableViewController {
     
     //MARK: - Properties
-    var itemArray = ["Buy coffee","Go to Walmart","Pick up GG"]
-    
-    
+    var itemArray = [Item]()
+    var selectedCategory : Category?{
+        didSet{
+            loadItems()
+        }
+    }
+    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     
     //MARK: - LifeCycle
     override func viewDidLoad() {
         super.viewDidLoad()
+        
     }
     
     //MARK: - Table view data source
@@ -32,22 +38,22 @@ class ToDoListVC: UITableViewController {
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "ToDoCell", for: indexPath)
-        cell.textLabel?.text = itemArray[indexPath.row]
+        cell.textLabel?.text = itemArray[indexPath.row].title
+        
+        cell.accessoryType = itemArray[indexPath.row].done == true ? .checkmark : .none
+        
+        
         return cell
     }
     
     //MARK: - Table view delegate
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        // Deselects a given row identified by index path
+        itemArray[indexPath.row].done.toggle()
+        
+        saveItems()
+        
         tableView.deselectRow(at: indexPath, animated: true)
-        // The cell we select for will have an accsssory type .checkmark or none.
-        let accessType = tableView.cellForRow(at: indexPath)?.accessoryType
-        if accessType == .checkmark{
-            tableView.cellForRow(at: indexPath)?.accessoryType = .none
-        }
-        else{
-            tableView.cellForRow(at: indexPath)?.accessoryType = .checkmark
-        }
+        
         
     }
     //MARK: - HelpFunctions
@@ -55,13 +61,19 @@ class ToDoListVC: UITableViewController {
         var toDOTextField = UITextField()
         // Show an UI alert
         let alertController = UIAlertController(title: "Add New To-DO", message: "", preferredStyle: .alert)
+        
         let action = UIAlertAction(title: "Add Item", style: .default) { (action) in
             // What wil happend once the user clicks the Add Item buttom
             if let title = toDOTextField.text{
-                self.itemArray.append(title)
-                DispatchQueue.main.async {
-                    self.tableView.reloadData()
-                }
+                
+                let newItem = Item(context: self.context)
+                newItem.title = title
+                newItem.done = false
+                // Relationship
+                newItem.parentCategory = self.selectedCategory
+                
+                self.itemArray.append(newItem)
+                self.saveItems()
             }
         }
         alertController.addTextField { (alertTextField) in
@@ -72,4 +84,60 @@ class ToDoListVC: UITableViewController {
         present(alertController, animated: true, completion: nil)
     }
     
+    func saveItems(){
+        do{
+            try self.context.save()
+        }
+        catch{
+            print("DEBUG: Failed to encode data \(error)")
+        }
+        self.tableView.reloadData()
+    }
+    
+    func loadItems(withRequest request : NSFetchRequest<Item> = Item.fetchRequest(), withPredicate predicate:NSPredicate? = nil){
+        let categoryPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", selectedCategory!.name!)
+        
+        if let additionalPredicate = predicate{
+            let compoundPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [categoryPredicate,additionalPredicate])
+            request.predicate = compoundPredicate
+        }
+        else{
+            request.predicate = categoryPredicate
+        }
+        
+        do{
+            itemArray = try self.context.fetch(request)
+            
+        }catch{
+            print("DEBUG: Failed to fetch data \(error)")
+        }
+        self.tableView.reloadData()
+    }
+}
+
+
+//MARK: - UISearchBarDelegate
+
+extension ToDoListVC : UISearchBarDelegate{
+    // Use query for SQLite
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        let request : NSFetchRequest<Item> = Item.fetchRequest()
+        let predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchBar.text!)
+        
+        let sortDescriptor = NSSortDescriptor(key: "title", ascending: true)
+        request.sortDescriptors = [sortDescriptor]
+        
+        
+        loadItems(withRequest: request,withPredicate: predicate)
+    }
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchBar.text?.count == 0{
+            loadItems()
+            // Dismiss keyboard.
+            DispatchQueue.main.async {
+                searchBar.resignFirstResponder()
+            }        
+        }
+    }
 }
