@@ -10,6 +10,6 @@ import Foundation
 import UIKit
 
 struct K {
-    static let cellIdentifier = "ToDoCell"
-    
+    static let cellIdentifier = "Cell"
+    static let coloredAppearance = UINavigationBarAppearance()
 }
